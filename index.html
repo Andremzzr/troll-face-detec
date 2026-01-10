@@ -1,100 +1,113 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Face Video Overlay - Local Asset</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"></script>
+  <title>Face Tracking - MindAR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
+
   <style>
-    body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #1a1a1a; color: #eee; font-family: sans-serif; height: 100vh; }
-    canvas { position: absolute; top: 0; left: 0; z-index: 10; }
-    video#webcam { transform: scaleX(-1); border-radius: 8px; } 
-    #ui { margin: 20px 0; text-align: center; z-index: 20; }
-    .container { position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    body { margin: 0; overflow: hidden; background: #000; }
+    
+    /* Start Button Overlay */
+    #overlay {
+      position: absolute;
+      z-index: 999;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+    }
+
+    #startBtn {
+      padding: 15px 40px;
+      font-size: 24px;
+      font-weight: bold;
+      color: white;
+      background: #ff0055;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 0 20px rgba(255, 0, 85, 0.5);
+    }
+
+    /* Message for user */
+    #status {
+      color: white;
+      margin-top: 20px;
+      font-family: sans-serif;
+    }
   </style>
 </head>
 <body>
 
-  <div id="ui">
-    <h2>Face Tracking</h2>
-    <p id="status">Initializing Camera...</p>
+  <div id="overlay">
+    <button id="startBtn">START</button>
+    <div id="status">Tap to start camera & video</div>
   </div>
 
-  <div class="container">
-    <video id="webcam" autoplay playsinline width="640" height="480"></video>
-    <canvas id="output"></canvas>
-  </div>
+  <a-scene mindar-face embedded color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    
+    <a-assets>
+      <video id="vid" src="man_dancing.mp4" playsinline webkit-playsinline loop muted crossorigin="anonymous"></video>
+    </a-assets>
 
-  <video id="overlayVideo" loop autoplay muted playsinline style="display:none;">
-    <source src="man_dancing.mp4" type="video/mp4">
-  </video>
+    <a-camera active="false" position="0 0 0"></a-camera>
+
+    <a-entity mindar-face-target="anchorIndex: 1">
+      
+      <a-plane 
+        src="#vid" 
+        position="0 0 0" 
+        height="1" 
+        width="0.8" 
+        rotation="0 0 0"
+        material="transparent: true; opacity: 1;">
+      </a-plane>
+      
+    </a-entity>
+
+  </a-scene>
 
   <script>
-    const webcam = document.getElementById('webcam');
-    const canvas = document.getElementById('output');
-    const overlayVid = document.getElementById('overlayVideo');
+    const startBtn = document.getElementById('startBtn');
+    const overlay = document.getElementById('overlay');
     const statusText = document.getElementById('status');
-    const ctx = canvas.getContext('2d');
-    let detector;
+    const videoAsset = document.querySelector('#vid');
+    const scene = document.querySelector('a-scene');
 
-    async function setupCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        webcam.srcObject = stream;
-        return new Promise((resolve) => {
-          webcam.onloadedmetadata = () => resolve(webcam);
-        });
-      } catch (e) {
-        statusText.innerText = "Error: Camera access denied.";
-      }
-    }
-
-    async function loadModel() {
-      statusText.innerText = "Loading AI Model...";
-      const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
-      detector = await faceDetection.createDetector(model, { runtime: 'tfjs' });
-      statusText.innerText = "System Active";
-    }
-
-    async function render() {
-      const faces = await detector.estimateFaces(webcam, { flipHorizontal: false });
+    startBtn.addEventListener('click', () => {
+      statusText.innerText = "Initializing...";
       
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // 1. Unmute and Play video immediately on user interaction
+      // This is the "Magic Key" for iOS/Android
+      videoAsset.play().then(() => {
+        console.log("Video playing...");
+      }).catch(e => {
+        console.error("Video play failed:", e);
+        statusText.innerText = "Error: " + e.message;
+      });
+
+      // 2. Hide Overlay
+      overlay.style.display = 'none';
       
-      // Draw mirrored webcam feed
-      ctx.save();
-      ctx.scale(-1, 1);
-      ctx.drawImage(webcam, -canvas.width, 0, canvas.width, canvas.height);
-      ctx.restore();
+      // 3. The AR scene is already running, but now the video texture is active
+    });
 
-      if (faces.length > 0) {
-        const face = faces[0].box;
-        const flippedX = canvas.width - face.xMin - face.width;
-
-        // Draw the local video asset over the face
-        // We add a slight margin to the width/height to cover the face better
-        ctx.drawImage(
-          overlayVid, 
-          flippedX - (face.width * 0.1), 
-          face.yMin - (face.height * 0.2), 
-          face.width * 1.2, 
-          face.height * 1.4
-        );
-      }
-      requestAnimationFrame(render);
-    }
-
-    async function main() {
-      await loadModel();
-      await setupCamera();
-      canvas.width = webcam.videoWidth;
-      canvas.height = webcam.videoHeight;
-      
-      // Ensure the overlay video is actually playing before we start
-      overlayVid.play();
-      render();
-    }
-
-    main();
+    // Optional: Log when AR is ready
+    scene.addEventListener("arReady", (event) => {
+      console.log("MindAR is ready");
+    });
+    
+    scene.addEventListener("arError", (event) => {
+      console.log("MindAR failed to start");
+      statusText.innerText = "Camera Access Denied";
+      overlay.style.display = 'flex';
+    });
   </script>
+
 </body>
 </html>
