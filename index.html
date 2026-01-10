@@ -1,73 +1,105 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Face Tracking - MindAR</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Face Filter - Mobile Stable</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
 
   <style>
-    body { margin: 0; overflow: hidden; background: #000; }
-    
-    /* Start Button Overlay */
+    /* 1. LOCK THE VIEWPORT */
+    /* This prevents the "Zoom" when address bar hides */
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      position: fixed; /* Crucial for iOS */
+      background-color: black;
+    }
+
     #overlay {
-      position: absolute;
-      z-index: 999;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.8);
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: column;
+      position: absolute; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.9);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
     }
 
     #startBtn {
-      padding: 15px 40px;
-      font-size: 24px;
-      font-weight: bold;
-      color: white;
-      background: #ff0055;
+      padding: 20px 60px;
+      font-size: 20px;
+      background: #00e676;
+      color: #000;
       border: none;
       border-radius: 50px;
-      cursor: pointer;
-      box-shadow: 0 0 20px rgba(255, 0, 85, 0.5);
+      font-weight: bold;
+      text-transform: uppercase;
     }
 
-    /* Message for user */
-    #status {
-      color: white;
-      margin-top: 20px;
-      font-family: sans-serif;
+    /* Hide the raw video, but keep it in the DOM */
+    #content-video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
     }
   </style>
+
+  <script>
+    // 2. TEXTURE FORCE UPDATE
+    // This component forces A-Frame to redraw the video 60 times a second
+    AFRAME.registerComponent('video-texture-fix', {
+      init: function () {
+        this.video = document.querySelector('#content-video');
+      },
+      tick: function () {
+        // If video is playing, force the texture to update
+        if (this.video.readyState >= 2) {
+          const mesh = this.el.getObject3D('mesh');
+          if (mesh && mesh.material.map) {
+            mesh.material.map.needsUpdate = true;
+          }
+        }
+      }
+    });
+  </script>
 </head>
 <body>
 
   <div id="overlay">
-    <button id="startBtn">START</button>
-    <div id="status">Tap to start camera & video</div>
+    <button id="startBtn">START FILTER</button>
   </div>
 
-  <a-scene mindar-face embedded color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
-    
-    <a-assets>
-      <video id="vid" src="man_dancing.mp4" playsinline webkit-playsinline loop muted crossorigin="anonymous"></video>
-    </a-assets>
+  <video id="content-video" loop muted playsinline webkit-playsinline crossOrigin="anonymous">
+    <source src="man_dancing.mp4" type="video/mp4">
+  </video>
+
+  <a-scene 
+    mindar-face 
+    embedded 
+    color-space="sRGB" 
+    renderer="colorManagement: true, physicallyCorrectLights, logarithmicDepthBuffer: true"
+    vr-mode-ui="enabled: false" 
+    device-orientation-permission-ui="enabled: false">
 
     <a-camera active="false" position="0 0 0"></a-camera>
 
     <a-entity mindar-face-target="anchorIndex: 1">
       
       <a-plane 
-        src="#vid" 
+        video-texture-fix
+        src="#content-video" 
         position="0 0 0" 
-        height="1" 
-        width="0.8" 
+        height="1.5" 
+        width="1" 
         rotation="0 0 0"
-        material="transparent: true; opacity: 1;">
+        material="shader: flat; transparent: true; opacity: 1; alphaTest: 0.5">
       </a-plane>
-      
+
     </a-entity>
 
   </a-scene>
@@ -75,39 +107,20 @@
   <script>
     const startBtn = document.getElementById('startBtn');
     const overlay = document.getElementById('overlay');
-    const statusText = document.getElementById('status');
-    const videoAsset = document.querySelector('#vid');
-    const scene = document.querySelector('a-scene');
+    const video = document.getElementById('content-video');
 
-    startBtn.addEventListener('click', () => {
-      statusText.innerText = "Initializing...";
-      
-      // 1. Unmute and Play video immediately on user interaction
-      // This is the "Magic Key" for iOS/Android
-      videoAsset.play().then(() => {
-        console.log("Video playing...");
-      }).catch(e => {
-        console.error("Video play failed:", e);
-        statusText.innerText = "Error: " + e.message;
-      });
-
-      // 2. Hide Overlay
-      overlay.style.display = 'none';
-      
-      // 3. The AR scene is already running, but now the video texture is active
-    });
-
-    // Optional: Log when AR is ready
-    scene.addEventListener("arReady", (event) => {
-      console.log("MindAR is ready");
-    });
-    
-    scene.addEventListener("arError", (event) => {
-      console.log("MindAR failed to start");
-      statusText.innerText = "Camera Access Denied";
-      overlay.style.display = 'flex';
+    startBtn.addEventListener('click', async () => {
+      // 1. Play the video FIRST (User Interaction Requirement)
+      try {
+        await video.play();
+        console.log("Video started");
+        
+        // 2. Hide overlay only after video starts
+        overlay.style.display = 'none';
+      } catch (err) {
+        alert("Video Error: " + err.message);
+      }
     });
   </script>
-
 </body>
 </html>
