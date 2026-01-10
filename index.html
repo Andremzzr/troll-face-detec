@@ -1,80 +1,95 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Face Filter - Mobile Stable</title>
+  <title>Tui Big guy</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-face-aframe.prod.js"></script>
 
   <style>
-    /* 1. LOCK THE VIEWPORT */
-    /* This prevents the "Zoom" when address bar hides */
+    /* Lock viewport to prevent zooming/jumping */
     html, body {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      margin: 0;
-      padding: 0;
-      position: fixed; /* Crucial for iOS */
-      background-color: black;
+      width: 100%; height: 100%; overflow: hidden;
+      margin: 0; padding: 0; position: fixed; background: #000;
+      font-family: monospace;
     }
 
     #overlay {
-      position: absolute; z-index: 9999; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.9);
-      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      position: absolute; z-index: 999; top: 0; left: 0; width: 100%; height: 100%;
+      background: #000; display: flex; flex-direction: column; 
+      justify-content: center; align-items: center;
     }
 
     #startBtn {
-      padding: 20px 60px;
-      font-size: 20px;
-      background: #00e676;
-      color: #000;
-      border: none;
-      border-radius: 50px;
-      font-weight: bold;
-      text-transform: uppercase;
+      padding: 20px 40px; font-size: 20px; font-weight: bold;
+      background: #00ff00; border: none; border-radius: 5px; cursor: pointer;
     }
 
-    /* Hide the raw video, but keep it in the DOM */
-    #content-video {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-      pointer-events: none;
+    /* On-screen debug console */
+    #console-log {
+      position: absolute; top: 0; left: 0; width: 100%; 
+      background: rgba(0,0,0,0.5); color: #0f0; 
+      pointer-events: none; z-index: 100; font-size: 10px; padding: 5px;
+    }
+
+    /* Keep video in DOM but invisible */
+    #the-video {
+      position: absolute; top: 0; left: 0; width: 1px; height: 1px; opacity: 0;
     }
   </style>
 
   <script>
-    // 2. TEXTURE FORCE UPDATE
-    // This component forces A-Frame to redraw the video 60 times a second
-    AFRAME.registerComponent('video-texture-fix', {
+    // --- CUSTOM COMPONENT: MANUAL TEXTURE FORCE ---
+    AFRAME.registerComponent('manual-video-texture', {
       init: function () {
-        this.video = document.querySelector('#content-video');
+        this.videoEl = document.querySelector('#the-video');
+        this.mesh = this.el.getObject3D('mesh');
+        this.texture = null;
+
+        // Try to bind immediately if mesh exists
+        if (this.mesh) this.applyTexture();
+
+        // Bind if mesh loads later
+        this.el.addEventListener('model-loaded', () => this.applyTexture());
       },
-      tick: function () {
-        // If video is playing, force the texture to update
-        if (this.video.readyState >= 2) {
-          const mesh = this.el.getObject3D('mesh');
-          if (mesh && mesh.material.map) {
-            mesh.material.map.needsUpdate = true;
-          }
-        }
+
+      applyTexture: function () {
+        if (!this.mesh) return;
+        
+        const logger = document.getElementById('console-log');
+        logger.innerText += "\n[System] Creating VideoTexture...";
+
+        // 1. Create a direct Three.js VideoTexture
+        // This is the most robust way to handle video in WebGL
+        this.texture = new THREE.VideoTexture(this.videoEl);
+        this.texture.minFilter = THREE.LinearFilter;
+        this.texture.magFilter = THREE.LinearFilter;
+        this.texture.format = THREE.RGBAFormat;
+        
+        // 2. Apply to the material
+        // We assume the plane has a basic material
+        const material = new THREE.MeshBasicMaterial({
+            map: this.texture,
+            transparent: true,
+            opacity: 1
+        });
+
+        this.mesh.material = material;
+        logger.innerText += " DONE.";
       }
     });
   </script>
 </head>
 <body>
 
+  <div id="console-log">Ready.</div>
+
   <div id="overlay">
-    <button id="startBtn">START FILTER</button>
+    <button id="startBtn">START</button>
   </div>
 
-  <video id="content-video" loop muted playsinline webkit-playsinline crossOrigin="anonymous">
+  <video id="the-video" loop muted playsinline webkit-playsinline crossOrigin="anonymous">
     <source src="man_dancing.mp4" type="video/mp4">
   </video>
 
@@ -82,7 +97,7 @@
     mindar-face 
     embedded 
     color-space="sRGB" 
-    renderer="colorManagement: true, physicallyCorrectLights, logarithmicDepthBuffer: true"
+    renderer="colorManagement: true, physicallyCorrectLights"
     vr-mode-ui="enabled: false" 
     device-orientation-permission-ui="enabled: false">
 
@@ -91,35 +106,55 @@
     <a-entity mindar-face-target="anchorIndex: 1">
       
       <a-plane 
-        video-texture-fix
-        src="#content-video" 
+        manual-video-texture
         position="0 0 0" 
         height="1.5" 
-        width="1" 
-        rotation="0 0 0"
-        material="shader: flat; transparent: true; opacity: 1; alphaTest: 0.5">
+        width="1">
       </a-plane>
 
     </a-entity>
-
   </a-scene>
 
   <script>
     const startBtn = document.getElementById('startBtn');
     const overlay = document.getElementById('overlay');
-    const video = document.getElementById('content-video');
+    const video = document.getElementById('the-video');
+    const logger = document.getElementById('console-log');
+
+    // Override console.log to show on screen
+    const realLog = console.log;
+    console.log = function(msg) {
+      logger.innerText += "\n" + msg;
+      realLog.apply(console, arguments);
+    };
 
     startBtn.addEventListener('click', async () => {
-      // 1. Play the video FIRST (User Interaction Requirement)
+      logger.innerText += "\n[User] Clicked Start...";
+      
       try {
+        // 1. Force Play
         await video.play();
-        console.log("Video started");
+        logger.innerText += "\n[Video] Playing (Time: " + video.currentTime + ")";
         
-        // 2. Hide overlay only after video starts
+        // 2. Hide Overlay
         overlay.style.display = 'none';
-      } catch (err) {
-        alert("Video Error: " + err.message);
+
+      } catch (e) {
+        logger.innerText += "\n[Error] " + e.message;
+        alert("Video failed: " + e.message);
       }
+    });
+
+    // Check if video is actually progressing
+    setInterval(() => {
+      if (!video.paused) {
+        // Just blinking a dot to show it's alive
+        // logger.innerText = "Video Time: " + video.currentTime.toFixed(2); 
+      }
+    }, 1000);
+    
+    document.querySelector('a-scene').addEventListener('arError', (ev) => {
+        logger.innerText += "\n[AR Error] " + JSON.stringify(ev.detail);
     });
   </script>
 </body>
