@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Face Video Overlay - Local Asset</title>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-detection"></script>
+  <style>
+    body { margin: 0; display: flex; flex-direction: column; align-items: center; background: #1a1a1a; color: #eee; font-family: sans-serif; height: 100vh; }
+    canvas { position: absolute; top: 0; left: 0; z-index: 10; }
+    video#webcam { transform: scaleX(-1); border-radius: 8px; } 
+    #ui { margin: 20px 0; text-align: center; z-index: 20; }
+    .container { position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+  </style>
+</head>
+<body>
+
+  <div id="ui">
+    <h2>Face Tracking</h2>
+    <p id="status">Initializing Camera...</p>
+  </div>
+
+  <div class="container">
+    <video id="webcam" autoplay playsinline width="640" height="480"></video>
+    <canvas id="output"></canvas>
+  </div>
+
+  <video id="overlayVideo" loop autoplay muted playsinline style="display:none;">
+    <source src="man_dancing.mp4" type="video/mp4">
+  </video>
+
+  <script>
+    const webcam = document.getElementById('webcam');
+    const canvas = document.getElementById('output');
+    const overlayVid = document.getElementById('overlayVideo');
+    const statusText = document.getElementById('status');
+    const ctx = canvas.getContext('2d');
+    let detector;
+
+    async function setupCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        webcam.srcObject = stream;
+        return new Promise((resolve) => {
+          webcam.onloadedmetadata = () => resolve(webcam);
+        });
+      } catch (e) {
+        statusText.innerText = "Error: Camera access denied.";
+      }
+    }
+
+    async function loadModel() {
+      statusText.innerText = "Loading AI Model...";
+      const model = faceDetection.SupportedModels.MediaPipeFaceDetector;
+      detector = await faceDetection.createDetector(model, { runtime: 'tfjs' });
+      statusText.innerText = "System Active";
+    }
+
+    async function render() {
+      const faces = await detector.estimateFaces(webcam, { flipHorizontal: false });
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw mirrored webcam feed
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(webcam, -canvas.width, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      if (faces.length > 0) {
+        const face = faces[0].box;
+        const flippedX = canvas.width - face.xMin - face.width;
+
+        // Draw the local video asset over the face
+        // We add a slight margin to the width/height to cover the face better
+        ctx.drawImage(
+          overlayVid, 
+          flippedX - (face.width * 0.1), 
+          face.yMin - (face.height * 0.2), 
+          face.width * 1.2, 
+          face.height * 1.4
+        );
+      }
+      requestAnimationFrame(render);
+    }
+
+    async function main() {
+      await loadModel();
+      await setupCamera();
+      canvas.width = webcam.videoWidth;
+      canvas.height = webcam.videoHeight;
+      
+      // Ensure the overlay video is actually playing before we start
+      overlayVid.play();
+      render();
+    }
+
+    main();
+  </script>
+</body>
+</html>
