@@ -83,6 +83,8 @@
 </head>
 <body>
 
+  <div id="console-log">Ready.</div>
+
   <div id="overlay">
     <button id="startBtn">START</button>
   </div>
@@ -117,18 +119,22 @@
     const startBtn = document.getElementById('startBtn');
     const overlay = document.getElementById('overlay');
     const video = document.getElementById('the-video');
+    const logger = document.getElementById('console-log');
 
     // Override console.log to show on screen
     const realLog = console.log;
     console.log = function(msg) {
+      logger.innerText += "\n" + msg;
       realLog.apply(console, arguments);
     };
 
     startBtn.addEventListener('click', async () => {
+      logger.innerText += "\n[User] Clicked Start...";
       
       try {
         // 1. Force Play
         await video.play();
+        logger.innerText += "\n[Video] Playing (Time: " + video.currentTime + ")";
         
         // 2. Hide Overlay
         overlay.style.display = 'none';
@@ -147,6 +153,7 @@
     }, 1000);
     
     document.querySelector('a-scene').addEventListener('arError', (ev) => {
+        logger.innerText += "\n[AR Error] " + JSON.stringify(ev.detail);
     });
   </script>
 </body>
